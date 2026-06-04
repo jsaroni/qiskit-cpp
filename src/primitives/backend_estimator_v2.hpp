@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <iostream>
+#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -88,6 +89,12 @@ protected:
         }
     }
 
+    static void append_measurements(circuit::QuantumCircuit& circ, uint_t num_qubits) {
+        for (uint_t q = 0; q < num_qubits; q++) {
+            circ.measure(q, q);
+        }
+    }
+
 public:
     BackendEstimatorV2(providers::BackendV2& backend, uint_t shots = 1024)
         : shots_(shots), backend_(backend) {}
@@ -98,7 +105,6 @@ public:
 
     std::vector<EstimatorPubResult> run(std::vector<EstimatorPub> pubs) {
         std::vector<EstimatorPubResult> results;
-
         BackendSamplerV2 sampler(backend_, shots_);
 
         for (auto& pub : pubs) {
@@ -108,12 +114,13 @@ public:
             for (auto& term : pub.observables) {
                 const std::string& pauli = term.first;
                 double coeff = term.second;
+                uint_t num_qubits = pauli.size();
 
                 auto meas_circ = pub.circuit.copy();
 
                 append_basis_rotation(meas_circ, pauli);
+                append_measurements(meas_circ, num_qubits);
 
-                // Basis rotations add gates, so transpile after adding them.
                 auto isa_circ = compiler::transpile(meas_circ, backend_);
 
                 SamplerPub sampler_pub(
@@ -125,6 +132,7 @@ public:
                 auto primitive_result = job->result();
 
                 auto pub_result = primitive_result[0];
+
                 auto bits = pub_result.data().get_bitstrings();
 
                 if (bits.empty()) {
@@ -149,7 +157,6 @@ public:
             EstimatorPubResult r;
             r.ev = total_ev;
             r.stddev = std::sqrt(variance_accum);
-
             results.push_back(r);
         }
 
